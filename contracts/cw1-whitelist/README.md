@@ -42,3 +42,30 @@ sha256sum cw1_whitelist.wasm
 
 Or for a production-ready (optimized) build, run a build command in the
 the repository root: https://github.com/CosmWasm/cw-plus#compiling.
+
+### Crates Used
+
+    ```
+        In Contract.rs:
+
+        // Crate schemars: use JsonSchema to generate json for code
+        //Crate cosmwasm_std call entryPoint for main fns [instantiate -execute -query]
+        //Crate cosmwasm_std  
+        // to_binary convert data serialize to binary result
+        // Addr Human address readable
+        // Api trait Takes a human readable address and validates if it is valid
+        // Binary the std_result is binary
+        // CosmosMsg enum contain msg like bankMsg,staking,...
+        // Deps struct contains [storage for store items - api trait that contain msg - queries]
+        // Empty empty struct
+        // Env struct contains info about [blockInfo - transaction info- contract]
+        // MessageInfo  contains  [senders - funds is vec of coins, coin is contain deom and amount
+        // Response struct contain [message is vec of subMessage - attributes is about key and value-event contains attributes -data is binary]
+        // StdResult contains the result and error std
+
+        In state.rs
+        //Crate cosmwasm_std: use Addr A human readable address is string
+        // Crate schemars: use JsonSchema to generate json for code
+        //crate cw_storage_plus: Use Item for storage key and it's value 
+    
+    ```
