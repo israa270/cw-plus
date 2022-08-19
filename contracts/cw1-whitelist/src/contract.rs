@@ -1,5 +1,7 @@
-use schemars::JsonSchema;   // Crate schemars: use JsonSchema to generate json for code
-use std::fmt;  // fmt Debug for display the object
+
+
+
+
 
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;     //Crate cosmwasm_std call entryPoint for main fns [instantiate -execute -query]
@@ -16,21 +18,24 @@ use cosmwasm_std::entry_point;     //Crate cosmwasm_std call entryPoint for main
  // Response struct contain [message is vec of subMessage - attributes is about key and value-event contains attributes -data is binary]
  // StdResult contains the result and error std
  use cosmwasm_std::{  
-    to_binary, Addr, Api, Binary, CosmosMsg, Deps, DepsMut, Empty, Env, MessageInfo, Response,
-    StdResult,
+     Binary, Deps, DepsMut, Empty, Env, MessageInfo, Response,
+    StdResult,to_binary
 };
-// Crate cw1 - CanExecuteResponse check if execute or not
-use cw1::CanExecuteResponse;
+
 // Crate cw2 -set_contract_version -store version name and num from cargo tomal
 use cw2::set_contract_version;
 //Crate error.rs ContractError struct 
 use crate::error::ContractError;
 //Crate msg.rs these struct used in request and response
-use crate::msg::{AdminListResponse, ExecuteMsg, InstantiateMsg, QueryMsg};
+use crate::msg::{ ExecuteMsg, InstantiateMsg, QueryMsg};
 //Crate state.rs 
 //AdminList struct is object of state.
 // Admin_list is type of Item storage that store key and value
 use crate::state::{AdminList, ADMIN_LIST};
+
+use crate::whitelist::{WhiteListContract,WhiteListExecute,WhiteListQuery};
+
+use crate::whitelist_helper::map_validate;
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:cw1-whitelist";
@@ -57,10 +62,7 @@ pub fn instantiate(
 
     Ok(Response::default())  // return the response default
 }
-//map_validate validate admins addr using api trait that contain validate fn
-pub fn map_validate(api: &dyn Api, admins: &[String]) -> StdResult<Vec<Addr>> {
-    admins.iter().map(|addr| api.addr_validate(addr)).collect()
-}
+
 /// entry_point that tell rust to start with execute fn is about write operation in contract
 /// execute fn execut  ExecuteMsg enum has three cases 
 /// execute is about authorize admin address
@@ -75,85 +77,17 @@ pub fn execute(
     // and then import the rest of this contract code.
     msg: ExecuteMsg<Empty>,
 ) -> Result<Response<Empty>, ContractError> {
+    // instatiate contract from WhitList Contract default  Used to call fn in WhitelistExecut trait
+    let contract = WhiteListContract::<Empty, Empty, Empty>::default();
+    
     //match case of Execute Msg
     match msg {
-        ExecuteMsg::Execute { msgs } => execute_execute(deps, env, info, msgs), //  execute is about authorize admin address
-        ExecuteMsg::Freeze {} => execute_freeze(deps, env, info), //freeze made is admin as immutable
-        ExecuteMsg::UpdateAdmins { admins } => execute_update_admins(deps, env, info, admins), // update admin if is mutable if not mutable it can't update it.
-    }
-}
-/// execute is about authorize admin address
-pub fn execute_execute<T>(
-    deps: DepsMut,
-    _env: Env,
-    info: MessageInfo,
-    msgs: Vec<CosmosMsg<T>>,
-) -> Result<Response<T>, ContractError>
-where
-    T: Clone + fmt::Debug + PartialEq + JsonSchema,
-{
-    // can_execute check this sender is admin if not this addr or sender is not authorized
-    if !can_execute(deps.as_ref(), info.sender.as_ref())? {
-        Err(ContractError::Unauthorized {})
-    } else {
-        // response object contains msg is return msg from type cosmosMsg and attributes is about key, value action with value execute
-        let res = Response::new()
-            .add_messages(msgs)      
-            .add_attribute("action", "execute");
-        Ok(res)
-    }
-}
-/// execute_freeze freeze made is admin as immutable
-pub fn execute_freeze(
-    deps: DepsMut,
-    _env: Env,
-    info: MessageInfo,
-) -> Result<Response, ContractError> {
-    let mut cfg = ADMIN_LIST.load(deps.storage)?;
-    // returns true if the address is a registered admin and the config is mutable
-    if !cfg.can_modify(info.sender.as_ref()) {
-        Err(ContractError::Unauthorized {})
-    } else {
-        cfg.mutable = false;  //change mutable for sender
-        //store updateAdmin with new value mutable in Item storage
-        ADMIN_LIST.save(deps.storage, &cfg)?;
-        // response the attribute contains action is freeze
-        let res = Response::new().add_attribute("action", "freeze");
-        // return the res 
-        Ok(res)
+        ExecuteMsg::Execute { msgs } => contract.execute_execute(deps, env, info, msgs), //  execute is about authorize admin address
+        ExecuteMsg::Freeze {} => contract.execute_freeze(deps, env, info), //freeze made is admin as immutable
+        ExecuteMsg::UpdateAdmins { admins } => contract.execute_update_admins(deps, env, info, admins), // update admin if is mutable if not mutable it can't update it.
     }
 }
 
-/// execute_update_admins update admin if is mutable if not mutable it can't update it.
-pub fn execute_update_admins(
-    deps: DepsMut,
-    _env: Env,
-    info: MessageInfo,
-    admins: Vec<String>,
-) -> Result<Response, ContractError> {
-    //load admin from storage Item
-    let mut cfg = ADMIN_LIST.load(deps.storage)?;
-    // check if admin can modify or not 
-    if !cfg.can_modify(info.sender.as_ref()) {
-        Err(ContractError::Unauthorized {})
-    } else {
-        //validate addr of admins using api trait
-        cfg.admins = map_validate(deps.api, &admins)?;
-        // save admin in cfg updated after map_validate
-        ADMIN_LIST.save(deps.storage, &cfg)?;
-       // response is add attributes action is update admin
-        let res = Response::new().add_attribute("action", "update_admins");
-       // return res
-        Ok(res)
-    }
-}
-/// can_execute check this sender is admin
-fn can_execute(deps: Deps, sender: &str) -> StdResult<bool> {
-    let cfg = ADMIN_LIST.load(deps.storage)?;
-    // check sender is admin or not
-    let can = cfg.is_admin(&sender);
-    Ok(can)
-}
 
 /// entry_point that tell rust to start with query fn to read operation from contract
 /// query match cases of QueryMsg contains
@@ -161,40 +95,23 @@ fn can_execute(deps: Deps, sender: &str) -> StdResult<bool> {
 /// canExecute check if admin is admin or not
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
+      // instatiate contract from WhitList Contract default  Used to call fn in WhitelistExecut trait
+      let contract = WhiteListContract::<Empty, Empty, Empty>::default();
     //match case from QueryMsg 
     match msg {
-        QueryMsg::AdminList {} => to_binary(&query_admin_list(deps)?),  // get adminList data and convert it to_binary 
-        QueryMsg::CanExecute { sender, msg } => to_binary(&query_can_execute(deps, sender, msg)?), // check sender is admin or not
+        QueryMsg::AdminList {} => to_binary(&contract.query_admin_list(deps)?),  // get adminList data and convert it to_binary 
+        QueryMsg::CanExecute { sender, msg } => to_binary(&contract.query_can_execute(deps, sender, msg)?), // check sender is admin or not
     }
 }
-/// query_admin_list return data of all admins in contract
-pub fn query_admin_list(deps: Deps) -> StdResult<AdminListResponse> {
-    // load admins from storage Item
-    let cfg = ADMIN_LIST.load(deps.storage)?;
-    //return AdminListResponse object
-    Ok(AdminListResponse {
-        admins: cfg.admins.into_iter().map(|a| a.into()).collect(),  // collect admins and return it in vec
-        mutable: cfg.mutable,
-    })
-}
 
-/// query_can_execute check sender is admin or not
-pub fn query_can_execute(
-    deps: Deps,
-    sender: String,
-    _msg: CosmosMsg,
-) -> StdResult<CanExecuteResponse> {
-    // return CanExecuteResponse is contain bool is execute or not
-    Ok(CanExecuteResponse {
-        can_execute: can_execute(deps, &sender)?,
-    })
-}
 
 #[cfg(test)]
 mod tests {
+    use crate::msg::AdminListResponse;
+
     use super::*;
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{coin, coins, BankMsg, StakingMsg, SubMsg, WasmMsg};
+    use cosmwasm_std::{coin, coins, BankMsg, StakingMsg, SubMsg, WasmMsg, to_binary, CosmosMsg};
 
     #[test]
     fn instantiate_and_modify_config() {
@@ -219,7 +136,9 @@ mod tests {
             admins: vec![alice.to_string(), bob.to_string(), carl.to_string()],
             mutable: true,
         };
-        assert_eq!(query_admin_list(deps.as_ref()).unwrap(), expected);
+          // instatiate contract from WhitList Contract default  Used to call fn in WhitelistExecut trait
+        let contract = WhiteListContract::<Empty, Empty, Empty>::default();
+        assert_eq!(contract.query_admin_list(deps.as_ref()).unwrap(), expected);
 
         // anyone cannot modify the contract
         let msg = ExecuteMsg::UpdateAdmins {
@@ -241,7 +160,7 @@ mod tests {
             admins: vec![alice.to_string(), bob.to_string()],
             mutable: true,
         };
-        assert_eq!(query_admin_list(deps.as_ref()).unwrap(), expected);
+        assert_eq!(contract.query_admin_list(deps.as_ref()).unwrap(), expected);
 
         // carl cannot freeze it
         let info = mock_info(carl, &[]);
@@ -255,7 +174,7 @@ mod tests {
             admins: vec![alice.to_string(), bob.to_string()],
             mutable: false,
         };
-        assert_eq!(query_admin_list(deps.as_ref()).unwrap(), expected);
+        assert_eq!(contract.query_admin_list(deps.as_ref()).unwrap(), expected);
 
         // and now alice cannot change it again
         let msg = ExecuteMsg::UpdateAdmins {
@@ -342,20 +261,23 @@ mod tests {
             amount: coin(70000, "ureef"),
         });
 
+        // instatiate contract from WhitList Contract default  Used to call fn in WhitelistExecut trait
+        let contract = WhiteListContract::<Empty, Empty, Empty>::default();
+        
         // owner can send
-        let res = query_can_execute(deps.as_ref(), alice.to_string(), send_msg.clone()).unwrap();
+        let res = contract.query_can_execute(deps.as_ref(), alice.to_string(), send_msg.clone()).unwrap();
         assert!(res.can_execute);
 
         // owner can stake
-        let res = query_can_execute(deps.as_ref(), bob.to_string(), staking_msg.clone()).unwrap();
+        let res = contract.query_can_execute(deps.as_ref(), bob.to_string(), staking_msg.clone()).unwrap();
         assert!(res.can_execute);
 
         // anyone cannot send
-        let res = query_can_execute(deps.as_ref(), anyone.to_string(), send_msg).unwrap();
+        let res = contract.query_can_execute(deps.as_ref(), anyone.to_string(), send_msg).unwrap();
         assert!(!res.can_execute);
 
         // anyone cannot stake
-        let res = query_can_execute(deps.as_ref(), anyone.to_string(), staking_msg).unwrap();
+        let res = contract.query_can_execute(deps.as_ref(), anyone.to_string(), staking_msg).unwrap();
         assert!(!res.can_execute);
     }
 }

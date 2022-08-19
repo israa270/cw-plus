@@ -1,3 +1,4 @@
+use cw1_whitelist::whitelist::{WhiteListContract, WhiteListExecute, WhiteListQuery};
 use schemars::JsonSchema;
 use std::fmt;
 use std::ops::{AddAssign, Sub};
@@ -11,8 +12,7 @@ use cosmwasm_std::{
 use cw1::CanExecuteResponse;
 use cw1_whitelist::{
     contract::{
-        execute_freeze, execute_update_admins, instantiate as whitelist_instantiate,
-        query_admin_list,
+          instantiate as whitelist_instantiate,     
     },
     msg::InstantiateMsg,
     state::ADMIN_LIST,
@@ -54,10 +54,12 @@ pub fn execute(
     // and then import the rest of this contract code.
     msg: ExecuteMsg<Empty>,
 ) -> Result<Response<Empty>, ContractError> {
+    let contract = WhiteListContract::<Empty, Empty, Empty>::default();
+
     match msg {
         ExecuteMsg::Execute { msgs } => execute_execute(deps, env, info, msgs),
-        ExecuteMsg::Freeze {} => Ok(execute_freeze(deps, env, info)?),
-        ExecuteMsg::UpdateAdmins { admins } => Ok(execute_update_admins(deps, env, info, admins)?),
+        ExecuteMsg::Freeze {} => Ok(contract.execute_freeze(deps, env, info)?),
+        ExecuteMsg::UpdateAdmins { admins } => Ok(contract.execute_update_admins(deps, env, info, admins)?),
         ExecuteMsg::IncreaseAllowance {
             spender,
             amount,
@@ -303,8 +305,10 @@ where
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
+    let contract = WhiteListContract::<Empty, Empty, Empty>::default();
+
     match msg {
-        QueryMsg::AdminList {} => to_binary(&query_admin_list(deps)?),
+        QueryMsg::AdminList {} => to_binary(&contract.query_admin_list(deps)?),
         QueryMsg::Allowance { spender } => to_binary(&query_allowance(deps, env, spender)?),
         QueryMsg::Permissions { spender } => to_binary(&query_permissions(deps, spender)?),
         QueryMsg::CanExecute { sender, msg } => {
@@ -875,10 +879,11 @@ mod tests {
         #[test]
         fn query() {
             let Suite { deps, .. } = SuiteConfig::new().with_admin(ADMIN1).init();
+            let contract = WhiteListContract::<Empty, Empty, Empty>::default();
 
             // Verify
             assert_eq!(
-                query_admin_list(deps.as_ref()).unwrap().canonical(),
+                contract.query_admin_list(deps.as_ref()).unwrap().canonical(),
                 AdminListResponse {
                     admins: vec![OWNER.to_owned(), ADMIN1.to_owned()],
                     mutable: true,
@@ -907,8 +912,10 @@ mod tests {
             assert_eq!(rsp.events, vec![]);
             assert_eq!(rsp.data, None);
 
+            let contract = WhiteListContract::<Empty, Empty, Empty>::default();
+
             assert_eq!(
-                query_admin_list(deps.as_ref()).unwrap().canonical(),
+                contract.query_admin_list(deps.as_ref()).unwrap().canonical(),
                 AdminListResponse {
                     admins: vec![OWNER.to_owned(), ADMIN1.to_owned(), ADMIN2.to_owned()],
                     mutable: true,
@@ -935,9 +942,11 @@ mod tests {
             assert_eq!(rsp.messages, vec![]);
             assert_eq!(rsp.events, vec![]);
             assert_eq!(rsp.data, None);
+           
+            let contract = WhiteListContract::<Empty, Empty, Empty>::default();
 
             assert_eq!(
-                query_admin_list(deps.as_ref()).unwrap().canonical(),
+                contract.query_admin_list(deps.as_ref()).unwrap().canonical(),
                 AdminListResponse {
                     admins: vec![OWNER.to_owned(), ADMIN1.to_owned(), ADMIN2.to_owned()],
                     mutable: true,
@@ -961,8 +970,10 @@ mod tests {
             )
             .unwrap_err();
 
+            let contract = WhiteListContract::<Empty, Empty, Empty>::default();
+
             assert_eq!(
-                query_admin_list(deps.as_ref()).unwrap().canonical(),
+                contract.query_admin_list(deps.as_ref()).unwrap().canonical(),
                 AdminListResponse {
                     admins: vec![OWNER.to_owned()],
                     mutable: true,
@@ -998,8 +1009,10 @@ mod tests {
             )
             .unwrap_err();
 
+            let contract = WhiteListContract::<Empty, Empty, Empty>::default();
+
             assert_eq!(
-                query_admin_list(deps.as_ref()).unwrap().canonical(),
+                contract.query_admin_list(deps.as_ref()).unwrap().canonical(),
                 AdminListResponse {
                     admins: vec![ADMIN1.to_owned()],
                     mutable: true,
